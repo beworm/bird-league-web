@@ -637,51 +637,104 @@ function MatchupDetailPage({ matchup, week, onBack }) {
   const [editing2, setEditing2] = useState(!matchup.sub2);
   const [form1, setForm1] = useState({ species: "", desc: "" });
   const [form2, setForm2] = useState({ species: "", desc: "" });
+  const [files1, setFiles1] = useState([]);
+  const [files2, setFiles2] = useState([]);
+  const [submitting, setSubmitting] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const fileRef1 = useRef(null);
+  const fileRef2 = useRef(null);
 
   const handleSubmit = async (side) => {
     const form = side === 1 ? form1 : form2;
+    const files = side === 1 ? files1 : files2;
     const memberId = side === 1 ? matchup.m1 : matchup.m2;
     if (!form.species || !form.desc) return;
 
+    setSubmitting(true);
     try {
+      const formData = new FormData();
+      formData.append("species", form.species);
+      formData.append("description", form.desc);
+      files.forEach(f => formData.append("media", f));
+
       const res = await fetch(API_URL + "/api/submit/" + week + "/" + memberId, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ species: form.species, description: form.desc }),
+        body: formData,
       });
       if (!res.ok) throw new Error("Submit failed");
       const result = await res.json();
-      const subData = { species: form.species, desc: form.desc };
-      if (side === 1) { setSub1Data(subData); setEditing1(false); }
-      if (side === 2) { setSub2Data(subData); setEditing2(false); }
+      const subData = { species: form.species, desc: form.desc, media: result.mediaFiles || [] };
+      if (side === 1) { setSub1Data(subData); setEditing1(false); setFiles1([]); }
+      if (side === 2) { setSub2Data(subData); setEditing2(false); setFiles2([]); }
     } catch (err) {
       console.error("Submit error:", err);
       alert("Failed to submit. Please try again.");
     }
+    setSubmitting(false);
   };
   const handleResubmit = (side) => {
-    if (side === 1) { setForm1({ species: "", desc: "" }); setSub1Data(null); setEditing1(true); }
-    if (side === 2) { setForm2({ species: "", desc: "" }); setSub2Data(null); setEditing2(true); }
+    if (side === 1) { setForm1({ species: "", desc: "" }); setFiles1([]); setSub1Data(null); setEditing1(true); }
+    if (side === 2) { setForm2({ species: "", desc: "" }); setFiles2([]); setSub2Data(null); setEditing2(true); }
+  };
+  const handleFiles = (side, newFiles) => {
+    const arr = Array.from(newFiles);
+    if (side === 1) setFiles1(prev => [...prev, ...arr]);
+    else setFiles2(prev => [...prev, ...arr]);
+  };
+  const removeFile = (side, index) => {
+    if (side === 1) setFiles1(prev => prev.filter((_, i) => i !== index));
+    else setFiles2(prev => prev.filter((_, i) => i !== index));
   };
 
-  const renderSubmitForm = (side, form, setForm) => (
+  const renderSubmitForm = (side, form, setForm) => {
+    const files = side === 1 ? files1 : files2;
+    const fileRef = side === 1 ? fileRef1 : fileRef2;
+    return (
     <div className="battle-side">
       <div className="battle-name">{side === 1 ? m1.name : m2.name}</div>
       <div className="submit-form">
         <div className="form-group"><label>Bird Species:</label><input className="form-input" placeholder='e.g. "Pileated Woodpecker"' value={form.species} onChange={(e) => setForm({ ...form, species: e.target.value })} /></div>
         <div className="form-group"><label>Encounter:</label><textarea className="form-input" placeholder="Tell us about the encounter..." value={form.desc} onChange={(e) => setForm({ ...form, desc: e.target.value })} /></div>
-        <div className="form-group"><label>Photos / Video / Audio:</label><div className="upload-zone">Click to upload or drag files here<br /><span style={{ fontSize: 11, color: "var(--ink-light)" }}>JPG, PNG, MP4, MP3</span></div></div>
-        <button className="submit-btn" onClick={() => handleSubmit(side)}>Submit Your Bird</button>
+        <div className="form-group">
+          <label>Photos / Video / Audio:</label>
+          <input type="file" ref={fileRef} multiple accept="image/*,video/*,audio/*" style={{ display: "none" }} onChange={(e) => handleFiles(side, e.target.files)} />
+          <div className="upload-zone" onClick={() => fileRef.current?.click()}
+            onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = "var(--ink)"; }}
+            onDragLeave={(e) => { e.currentTarget.style.borderColor = "#ccc"; }}
+            onDrop={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = "#ccc"; handleFiles(side, e.dataTransfer.files); }}>
+            Click to upload or drag files here<br /><span style={{ fontSize: 11, color: "var(--ink-light)" }}>JPG, PNG, MP4, MP3</span>
+          </div>
+          {files.length > 0 && (
+            <div style={{ marginTop: 8 }}>
+              {files.map((f, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, padding: "4px 0", borderBottom: "1px solid #eee" }}>
+                  {f.type.startsWith("image/") && <img src={URL.createObjectURL(f)} alt="" style={{ width: 40, height: 40, objectFit: "cover", border: "1px solid #ccc" }} />}
+                  {f.type.startsWith("video/") && <span style={{ fontSize: 18 }}>{"\uD83C\uDFA5"}</span>}
+                  {f.type.startsWith("audio/") && <span style={{ fontSize: 18 }}>{"\uD83C\uDFB5"}</span>}
+                  <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
+                  <span style={{ color: "var(--ink-light)" }}>({(f.size / 1024).toFixed(0)}KB)</span>
+                  <button onClick={() => removeFile(side, i)} style={{ background: "none", border: "none", cursor: "pointer", color: "#c00", fontWeight: "bold" }}>{"\u2715"}</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <button className="submit-btn" onClick={() => handleSubmit(side)} disabled={submitting}>{submitting ? "Submitting..." : "Submit Your Bird"}</button>
       </div>
     </div>
-  );
+  );};
 
   const renderSubmittedSide = (member, subData, side) => (
     <div className="battle-side submitted-side">
       <div className="battle-name">{member.name}<span className="submitted-tag">SUBMITTED</span></div>
       <div className="battle-species">{subData.species}</div>
       {getBirdPhoto(week, member.id) && <img src={getBirdPhoto(week, member.id)} alt={subData.species} className="battle-photo" />}
+      {subData.media && subData.media.length > 0 && subData.media.map((url, i) => {
+        const fullUrl = url.startsWith("http") ? url : API_URL + url;
+        if (url.match(/\.(jpg|jpeg|png|gif|webp)$/i)) return <img key={i} src={fullUrl} alt="" className="battle-photo" />;
+        if (url.match(/\.(mp4|mov|webm)$/i)) return <video key={i} src={fullUrl} controls className="battle-photo" />;
+        return null;
+      })}
       <div className="battle-desc">{subData.desc}</div>
       {isActive && <button className="resubmit-btn" onClick={() => handleResubmit(side)}>Resubmit</button>}
     </div>
