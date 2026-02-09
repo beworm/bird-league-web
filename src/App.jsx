@@ -822,22 +822,26 @@ function HomePage({ onMatchupSelect, activeWeek, setActiveWeek }) {
 export default function App() {
   const [dataLoaded, setDataLoaded] = useState(false);
   const [apiError, setApiError] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
-  useEffect(() => {
-    fetch(API_URL + "/api/data")
+  const refreshData = () => {
+    return fetch(API_URL + "/api/data")
       .then(r => { if (!r.ok) throw new Error("API error"); return r.json(); })
       .then(data => {
         if (data.members) MEMBERS = data.members;
         if (data.standings) STANDINGS = data.standings;
         if (data.schedule) SCHEDULE = data.schedule;
         setDataLoaded(true);
+        setRefreshKey(k => k + 1);
       })
       .catch(err => {
         console.warn("API fetch failed, using embedded data:", err);
         setApiError(true);
         setDataLoaded(true);
       });
-  }, []);
+  };
+
+  useEffect(() => { refreshData(); }, []);
 
 
   const [tab, setTab] = useState("home");
@@ -846,14 +850,14 @@ export default function App() {
   const [activeWeek, setActiveWeek] = useState(3);
 
   const handleMatchupSelect = (mu, week) => { setSelectedMatchup(mu); setSelectedWeek(week); setActiveWeek(week); setTab("matchup-detail"); };
-  const handleBack = () => { setSelectedMatchup(null); setTab("home"); };
+  const handleBack = () => { refreshData(); setSelectedMatchup(null); setTab("home"); };
 
   return (
     <>
       <style>{css}</style>
       <div className="app">
         <Nav setTab={(t) => { setTab(t); setSelectedMatchup(null); }} />
-        {tab === "home" && <HomePage onMatchupSelect={handleMatchupSelect} activeWeek={activeWeek} setActiveWeek={setActiveWeek} />}
+        {tab === "home" && <HomePage key={refreshKey} onMatchupSelect={handleMatchupSelect} activeWeek={activeWeek} setActiveWeek={setActiveWeek} />}
         {tab === "matchup-detail" && selectedMatchup && (
           <MatchupDetailPage matchup={selectedMatchup} week={selectedWeek} onBack={handleBack} />
         )}
