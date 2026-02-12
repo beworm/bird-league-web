@@ -465,14 +465,305 @@ const css = `
     .deliberation { padding: 14px; }
     .modal-overlay { padding: 20px 8px; }
   }
+
+  /* ── Admin Panel ────────────────────────── */
+  .admin-login { display: flex; align-items: center; justify-content: center; min-height: 60vh; }
+  .admin-login-box { background: var(--card-bg); border: 3px solid var(--border); padding: 32px; max-width: 400px; width: 100%; text-align: center; }
+  .admin-title { font-family: 'OldEnglishGothicPixel', serif; font-size: 24px; margin-bottom: 12px; }
+  .admin-input { width: 100%; padding: 10px 12px; border: 2px solid var(--border); background: var(--bg); font-family: inherit; font-size: 14px; outline: none; }
+  .admin-input:focus { border-color: var(--winner-gold); }
+  .admin-error { color: #8b0000; font-size: 13px; margin-top: 12px; padding: 8px; background: #fff0f0; border: 1px solid #dca; }
+  .admin-btn { font-family: inherit; font-size: 13px; padding: 8px 16px; border: 2px solid var(--border); background: var(--card-bg); cursor: pointer; transition: all 0.15s; }
+  .admin-btn:hover { background: var(--ink); color: var(--bg); }
+  .admin-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .admin-btn:disabled:hover { background: var(--card-bg); color: var(--ink); }
+  .admin-btn-primary { background: var(--ink); color: var(--bg); }
+  .admin-btn-primary:hover { background: var(--winner-gold); color: var(--ink); border-color: var(--winner-gold); }
+  .admin-btn-sm { font-size: 12px; padding: 5px 10px; }
+  .admin-btn-judge { background: #2d6a4f; color: #fff; border-color: #2d6a4f; }
+  .admin-btn-judge:hover { background: #1b4332; border-color: #1b4332; }
+  .admin-btn-judge:disabled:hover { background: #2d6a4f; color: #fff; }
+  .admin-btn-status { background: var(--bg); }
+
+  .admin-panel { padding: 20px 0; }
+  .admin-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 2px solid var(--border); }
+
+  .admin-week-card { background: var(--card-bg); border: 2px solid var(--border); margin-bottom: 16px; padding: 16px; }
+  .admin-week-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .admin-week-label { font-family: 'OldEnglishGothicPixel', serif; font-size: 18px; }
+  .admin-status-badge { display: inline-block; color: #fff; font-size: 11px; padding: 3px 10px; letter-spacing: 0.5px; text-transform: uppercase; }
+
+  .admin-stats { display: flex; gap: 16px; margin-bottom: 14px; flex-wrap: wrap; }
+  .admin-stat { display: flex; align-items: baseline; gap: 4px; }
+  .admin-stat-num { font-size: 20px; font-weight: bold; }
+  .admin-stat-label { font-size: 12px; color: var(--ink-light); }
+
+  .admin-matchups { border-top: 1px solid #ddd; padding-top: 10px; margin-bottom: 14px; }
+  .admin-matchup-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: 13px; flex-wrap: wrap; }
+  .admin-matchup-name { min-width: 90px; }
+  .admin-vs { color: var(--ink-light); font-size: 11px; }
+  .admin-sub-dot { width: 10px; height: 10px; border-radius: 50%; border: 2px solid #aaa; flex-shrink: 0; }
+  .admin-sub-dot.filled { background: #2d6a4f; border-color: #2d6a4f; }
+  .admin-judged-badge { font-size: 11px; color: #2d6a4f; margin-left: auto; }
+  .admin-pending-badge { font-size: 11px; color: #999; margin-left: auto; font-style: italic; }
+  .admin-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  .admin-log { background: var(--card-bg); border: 2px solid var(--border); padding: 14px; margin-top: 16px; }
+  .admin-log-title { font-family: 'OldEnglishGothicPixel', serif; font-size: 15px; margin-bottom: 8px; }
+  .admin-log-entries { max-height: 200px; overflow-y: auto; }
+  .admin-log-entry { font-size: 12px; padding: 3px 0; border-bottom: 1px solid #eee; font-family: 'Courier New', monospace; color: var(--ink-light); word-break: break-all; }
 `;
 
 // ─── Components ───────────────────────────────────────────
 
-function Nav({ setTab }) {
+// ── Admin Panel ──────────────────────────────────────────
+function AdminPanel({ onRefresh }) {
+  const [secret, setSecret] = useState("");
+  const [authenticated, setAuthenticated] = useState(false);
+  const [authError, setAuthError] = useState("");
+  const [weekData, setWeekData] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [actionLog, setActionLog] = useState([]);
+  const [judgingWeek, setJudgingWeek] = useState(null);
+
+  const log = (msg) => setActionLog((prev) => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev].slice(0, 50));
+
+  const adminFetch = async (path, opts = {}) => {
+    const res = await fetch(API_URL + path, {
+      ...opts,
+      headers: { ...(opts.headers || {}), Authorization: `Bearer ${secret}`, "Content-Type": "application/json" },
+    });
+    return res;
+  };
+
+  const authenticate = async () => {
+    setAuthError("");
+    try {
+      const res = await adminFetch("/api/admin/backup");
+      if (res.ok) {
+        setAuthenticated(true);
+        log("Authenticated successfully");
+        loadWeekData();
+      } else {
+        setAuthError("Invalid admin secret");
+      }
+    } catch (e) {
+      setAuthError("Connection failed: " + e.message);
+    }
+  };
+
+  const loadWeekData = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(API_URL + "/api/data");
+      if (!res.ok) throw new Error("API error");
+      const data = await res.json();
+      if (data.schedule) {
+        setWeekData(data.schedule);
+        // Also update global state
+        if (data.members) MEMBERS = data.members;
+        if (data.standings) STANDINGS = data.standings;
+        if (data.schedule) SCHEDULE = data.schedule;
+      }
+    } catch (e) {
+      log("Error loading data: " + e.message);
+    }
+    setLoading(false);
+  };
+
+  const triggerJudging = async (weekNum) => {
+    setJudgingWeek(weekNum);
+    log(`Triggering judging for Week ${weekNum}...`);
+    try {
+      const res = await adminFetch(`/api/admin/judge/${weekNum}`, { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        log(`Week ${weekNum} judging complete: ${data.judged} matchups judged`);
+        if (data.results) {
+          data.results.forEach((r) => {
+            log(`  → ${r.m1sub?.species || "?"} vs ${r.m2sub?.species || "?"}: Winner = ${r.winner}`);
+          });
+        }
+        loadWeekData();
+        if (onRefresh) onRefresh();
+      } else {
+        log(`Judging error: ${data.error || JSON.stringify(data)}`);
+      }
+    } catch (e) {
+      log(`Judging failed: ${e.message}`);
+    }
+    setJudgingWeek(null);
+  };
+
+  const setWeekStatus = async (weekNum, newStatus) => {
+    log(`Setting Week ${weekNum} → ${newStatus}...`);
+    try {
+      const res = await adminFetch(`/api/admin/week/${weekNum}/status`, {
+        method: "POST",
+        body: JSON.stringify({ status: newStatus }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        log(`Week ${weekNum} status changed to "${newStatus}"`);
+        loadWeekData();
+        if (onRefresh) onRefresh();
+      } else {
+        log(`Status change error: ${data.error || JSON.stringify(data)}`);
+      }
+    } catch (e) {
+      log(`Status change failed: ${e.message}`);
+    }
+  };
+
+  if (!authenticated) {
+    return (
+      <div className="admin-login">
+        <div className="admin-login-box">
+          <div className="admin-title">🔒 Admin Panel</div>
+          <p style={{ fontSize: 13, color: "var(--ink-light)", marginBottom: 16 }}>Enter your ADMIN_SECRET to access league controls.</p>
+          <input
+            type="password"
+            value={secret}
+            onChange={(e) => setSecret(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && authenticate()}
+            placeholder="Admin secret..."
+            className="admin-input"
+          />
+          <button onClick={authenticate} className="admin-btn admin-btn-primary" style={{ marginTop: 12 }}>
+            Authenticate
+          </button>
+          {authError && <div className="admin-error">{authError}</div>}
+        </div>
+      </div>
+    );
+  }
+
+  const statusColors = { completed: "#2d6a4f", active: "#b5651d", upcoming: "#666" };
+  const statusLabels = { completed: "✓ Completed", active: "▶ Active", upcoming: "◌ Upcoming" };
+  const nextStatus = { upcoming: "active", active: "completed", completed: "upcoming" };
+
+  return (
+    <div className="admin-panel">
+      <div className="admin-header">
+        <div className="admin-title">⚙ League Admin</div>
+        <button className="admin-btn admin-btn-sm" onClick={loadWeekData} disabled={loading}>
+          {loading ? "Loading..." : "↻ Refresh"}
+        </button>
+      </div>
+
+      {weekData.map((w) => {
+        const totalMatchups = w.matchups?.length || 0;
+        const withSub1 = w.matchups?.filter((m) => m.sub1).length || 0;
+        const withSub2 = w.matchups?.filter((m) => m.sub2).length || 0;
+        const withBothSubs = w.matchups?.filter((m) => m.sub1 && m.sub2).length || 0;
+        const judged = w.matchups?.filter((m) => m.judgment).length || 0;
+
+        return (
+          <div key={w.week} className="admin-week-card">
+            <div className="admin-week-header">
+              <span className="admin-week-label">Week {w.week}</span>
+              <span className="admin-status-badge" style={{ background: statusColors[w.status] || "#666" }}>
+                {statusLabels[w.status] || w.status}
+              </span>
+            </div>
+
+            <div className="admin-stats">
+              <div className="admin-stat">
+                <span className="admin-stat-num">{withSub1 + withSub2}</span>
+                <span className="admin-stat-label">/ {totalMatchups * 2} submissions</span>
+              </div>
+              <div className="admin-stat">
+                <span className="admin-stat-num">{withBothSubs}</span>
+                <span className="admin-stat-label">/ {totalMatchups} ready to judge</span>
+              </div>
+              <div className="admin-stat">
+                <span className="admin-stat-num">{judged}</span>
+                <span className="admin-stat-label">/ {totalMatchups} judged</span>
+              </div>
+            </div>
+
+            <div className="admin-matchups">
+              {w.matchups?.map((mu, i) => {
+                const m1 = getMember(mu.m1);
+                const m2 = getMember(mu.m2);
+                return (
+                  <div key={i} className="admin-matchup-row">
+                    <span className={`admin-sub-dot ${mu.sub1 ? "filled" : ""}`} title={mu.sub1 ? mu.sub1.species : "No submission"} />
+                    <span className="admin-matchup-name">{m1?.name || mu.m1}</span>
+                    <span className="admin-vs">vs</span>
+                    <span className="admin-matchup-name">{m2?.name || mu.m2}</span>
+                    <span className={`admin-sub-dot ${mu.sub2 ? "filled" : ""}`} title={mu.sub2 ? mu.sub2.species : "No submission"} />
+                    {mu.judgment ? (
+                      <span className="admin-judged-badge">✓ {mu.judgment.winner === "m1" ? (m1?.name || "M1") : (m2?.name || "M2")} wins</span>
+                    ) : (
+                      <span className="admin-pending-badge">pending</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="admin-actions">
+              <button
+                className="admin-btn admin-btn-judge"
+                onClick={() => triggerJudging(w.week)}
+                disabled={judgingWeek !== null || withBothSubs === 0}
+              >
+                {judgingWeek === w.week ? "⏳ Judging..." : `⚖ Judge Week ${w.week}`}
+              </button>
+              <button
+                className="admin-btn admin-btn-status"
+                onClick={() => setWeekStatus(w.week, nextStatus[w.status])}
+              >
+                → Set {nextStatus[w.status]}
+              </button>
+            </div>
+          </div>
+        );
+      })}
+
+      <div className="admin-log">
+        <div className="admin-log-title">Activity Log</div>
+        <div className="admin-log-entries">
+          {actionLog.length === 0 && <div className="admin-log-entry" style={{ opacity: 0.5 }}>No activity yet</div>}
+          {actionLog.map((entry, i) => (
+            <div key={i} className="admin-log-entry">{entry}</div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Nav({ setTab, tab }) {
+  const [clickCount, setClickCount] = useState(0);
+  const clickTimer = useRef(null);
+
+  const handleLogoClick = () => {
+    if (tab === "admin") {
+      setTab("home");
+      setClickCount(0);
+      return;
+    }
+    const newCount = clickCount + 1;
+    setClickCount(newCount);
+    if (clickTimer.current) clearTimeout(clickTimer.current);
+    if (newCount >= 5) {
+      setTab("admin");
+      setClickCount(0);
+      return;
+    }
+    clickTimer.current = setTimeout(() => {
+      setTab("home");
+      setClickCount(0);
+    }, 400);
+  };
+
   return (
     <nav className="nav">
-      <div className="nav-logo" onClick={() => setTab("home")}>Bird League</div>
+      <div className="nav-logo" onClick={handleLogoClick}>
+        Bird League{tab === "admin" ? " ⚙" : ""}
+      </div>
     </nav>
   );
 }
@@ -856,11 +1147,12 @@ export default function App() {
     <>
       <style>{css}</style>
       <div className="app">
-        <Nav setTab={(t) => { setTab(t); setSelectedMatchup(null); }} />
+        <Nav setTab={(t) => { setTab(t); if (t !== "admin") setSelectedMatchup(null); }} tab={tab} />
         {tab === "home" && <HomePage key={refreshKey} onMatchupSelect={handleMatchupSelect} activeWeek={activeWeek} setActiveWeek={setActiveWeek} />}
         {tab === "matchup-detail" && selectedMatchup && (
           <MatchupDetailPage matchup={selectedMatchup} week={selectedWeek} onBack={handleBack} />
         )}
+        {tab === "admin" && <AdminPanel onRefresh={refreshData} />}
         <div className="footer">Bird League S1 — Judged by ChatGPT, Gemini, and Claude</div>
       </div>
     </>
