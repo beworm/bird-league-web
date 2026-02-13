@@ -964,8 +964,8 @@ function MatchupDetailPage({ matchup, week, onBack }) {
     setSubmitting(false);
   };
   const handleResubmit = (side) => {
-    if (side === 1) { setForm1({ species: "", desc: "" }); setFiles1([]); setSub1Data(null); setEditing1(true); }
-    if (side === 2) { setForm2({ species: "", desc: "" }); setFiles2([]); setSub2Data(null); setEditing2(true); }
+    if (side === 1) { setForm1({ species: sub1Data?.species || "", desc: sub1Data?.desc || "" }); setFiles1([]); setSub1Data(null); setEditing1(true); }
+    if (side === 2) { setForm2({ species: sub2Data?.species || "", desc: sub2Data?.desc || "" }); setFiles2([]); setSub2Data(null); setEditing2(true); }
   };
   const handleFiles = (side, newFiles) => {
     const arr = Array.from(newFiles);
