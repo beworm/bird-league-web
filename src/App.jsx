@@ -595,6 +595,24 @@ function AdminPanel({ onRefresh }) {
     setJudgingWeek(null);
   };
 
+  const clearJudgments = async (weekNum) => {
+    if (!confirm(`Clear all judgments for Week ${weekNum}? This cannot be undone.`)) return;
+    log(`Clearing judgments for Week ${weekNum}...`);
+    try {
+      const res = await adminFetch(`/api/admin/judgments/${weekNum}`, { method: "DELETE" });
+      const data = await res.json();
+      if (res.ok) {
+        log(`Cleared ${data.removed} judgments for Week ${weekNum}`);
+        loadWeekData();
+        if (onRefresh) onRefresh();
+      } else {
+        log(`Clear error: ${data.error || JSON.stringify(data)}`);
+      }
+    } catch (e) {
+      log(`Clear failed: ${e.message}`);
+    }
+  };
+
   const setWeekStatus = async (weekNum, newStatus) => {
     log(`Setting Week ${weekNum} → ${newStatus}...`);
     try {
@@ -717,6 +735,15 @@ function AdminPanel({ onRefresh }) {
               >
                 → Set {nextStatus[w.status]}
               </button>
+              {judged > 0 && (
+                <button
+                  className="admin-btn"
+                  style={{ color: "#8b0000", borderColor: "#8b0000" }}
+                  onClick={() => clearJudgments(w.week)}
+                >
+                  ✗ Clear Judgments
+                </button>
+              )}
             </div>
           </div>
         );
@@ -1053,12 +1080,24 @@ function MatchupDetailPage({ matchup, week, onBack }) {
             <div className="battle-name">{m1.name}{j.winner === "m1" && <span className="winner-tag">WINNER</span>}</div>
             <div className="battle-species">{j.m1sub.species}</div>
             {getBirdPhoto(week, matchup.m1) && <img src={getBirdPhoto(week, matchup.m1)} alt={j.m1sub.species} className="battle-photo" />}
+            {matchup.sub1?.media && matchup.sub1.media.length > 0 && matchup.sub1.media.map((url, i) => {
+              const fullUrl = url.startsWith("http") ? url : API_URL + url;
+              if (url.match(/\.(jpg|jpeg|png|gif|webp)$/i)) return <img key={i} src={fullUrl} alt="" className="battle-photo" />;
+              if (url.match(/\.(mp4|mov|webm)$/i)) return <video key={i} src={fullUrl} controls className="battle-photo" />;
+              return null;
+            })}
             <div className="battle-desc">{j.m1sub.desc}</div>
           </div>
           <div className={`battle-side ${j.winner === "m2" ? "winner" : ""}`}>
             <div className="battle-name">{m2.name}{j.winner === "m2" && <span className="winner-tag">WINNER</span>}</div>
             <div className="battle-species">{j.m2sub.species}</div>
             {getBirdPhoto(week, matchup.m2) && <img src={getBirdPhoto(week, matchup.m2)} alt={j.m2sub.species} className="battle-photo" />}
+            {matchup.sub2?.media && matchup.sub2.media.length > 0 && matchup.sub2.media.map((url, i) => {
+              const fullUrl = url.startsWith("http") ? url : API_URL + url;
+              if (url.match(/\.(jpg|jpeg|png|gif|webp)$/i)) return <img key={i} src={fullUrl} alt="" className="battle-photo" />;
+              if (url.match(/\.(mp4|mov|webm)$/i)) return <video key={i} src={fullUrl} controls className="battle-photo" />;
+              return null;
+            })}
             <div className="battle-desc">{j.m2sub.desc}</div>
           </div>
         </div>
