@@ -506,6 +506,12 @@ const css = `
   .admin-sub-dot.filled { background: #2d6a4f; border-color: #2d6a4f; }
   .admin-judged-badge { font-size: 11px; color: #2d6a4f; margin-left: auto; }
   .admin-pending-badge { font-size: 11px; color: #999; margin-left: auto; font-style: italic; }
+  .admin-btn-inline { background: none; border: 1px solid #ccc; cursor: pointer; font-size: 12px; padding: 1px 6px; margin-left: 4px; color: var(--ink-light); }
+  .admin-btn-inline:hover { background: var(--ink); color: var(--bg); }
+  .admin-btn-inline:disabled { opacity: 0.3; cursor: not-allowed; }
+  .admin-btn-inline:disabled:hover { background: none; color: var(--ink-light); }
+  .admin-btn-danger { color: #8b0000; border-color: #8b0000; }
+  .admin-btn-danger:hover { background: #8b0000; color: #fff; }
   .admin-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
   .admin-log { background: var(--card-bg); border: 2px solid var(--border); padding: 14px; margin-top: 16px; }
@@ -613,6 +619,57 @@ function AdminPanel({ onRefresh }) {
     }
   };
 
+  const clearMatchupJudgment = async (weekNum, m1Id, m2Id) => {
+    const m1Name = getMember(m1Id)?.name || m1Id;
+    const m2Name = getMember(m2Id)?.name || m2Id;
+    if (!confirm(`Clear judgment for ${m1Name} vs ${m2Name}?`)) return;
+    log(`Clearing judgment: ${m1Name} vs ${m2Name}...`);
+    try {
+      const res = await adminFetch(`/api/admin/judgments/${weekNum}/${m1Id}/${m2Id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (res.ok) {
+        log(`Cleared judgment for ${m1Name} vs ${m2Name}`);
+        loadWeekData();
+        if (onRefresh) onRefresh();
+      } else {
+        log(`Clear error: ${data.error || JSON.stringify(data)}`);
+      }
+    } catch (e) {
+      log(`Clear failed: ${e.message}`);
+    }
+  };
+
+  const rejudgeMatchup = async (weekNum, m1Id, m2Id) => {
+    const m1Name = getMember(m1Id)?.name || m1Id;
+    const m2Name = getMember(m2Id)?.name || m2Id;
+    log(`Rejudging ${m1Name} vs ${m2Name}...`);
+    // Clear first
+    try {
+      await adminFetch(`/api/admin/judgments/${weekNum}/${m1Id}/${m2Id}`, { method: "DELETE" });
+    } catch (e) { /* ok if nothing to clear */ }
+    // Then judge
+    setJudgingWeek(weekNum);
+    try {
+      const res = await adminFetch(`/api/admin/judge/${weekNum}`, { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        const result = data.results?.find(r => r.m1Id === m1Id && r.m2Id === m2Id);
+        if (result) {
+          log(`Rejudged: ${m1Name} vs ${m2Name} → Winner: ${result.winner === "m1" ? m1Name : m2Name}`);
+        } else {
+          log(`Judging ran but matchup not found in results`);
+        }
+        loadWeekData();
+        if (onRefresh) onRefresh();
+      } else {
+        log(`Judging error: ${data.error || JSON.stringify(data)}`);
+      }
+    } catch (e) {
+      log(`Judging failed: ${e.message}`);
+    }
+    setJudgingWeek(null);
+  };
+
   const setWeekStatus = async (weekNum, newStatus) => {
     log(`Setting Week ${weekNum} → ${newStatus}...`);
     try {
@@ -712,7 +769,11 @@ function AdminPanel({ onRefresh }) {
                     <span className="admin-matchup-name">{m2?.name || mu.m2}</span>
                     <span className={`admin-sub-dot ${mu.sub2 ? "filled" : ""}`} title={mu.sub2 ? mu.sub2.species : "No submission"} />
                     {mu.judgment ? (
-                      <span className="admin-judged-badge">✓ {mu.judgment.winner === "m1" ? (m1?.name || "M1") : (m2?.name || "M2")} wins</span>
+                      <>
+                        <span className="admin-judged-badge">✓ {mu.judgment.winner === "m1" ? (m1?.name || "M1") : (m2?.name || "M2")} wins</span>
+                        <button className="admin-btn-inline" title="Rejudge this matchup" disabled={judgingWeek !== null} onClick={() => rejudgeMatchup(w.week, mu.m1, mu.m2)}>↻</button>
+                        <button className="admin-btn-inline admin-btn-danger" title="Clear this judgment" onClick={() => clearMatchupJudgment(w.week, mu.m1, mu.m2)}>✗</button>
+                      </>
                     ) : (
                       <span className="admin-pending-badge">pending</span>
                     )}
