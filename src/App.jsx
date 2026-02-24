@@ -372,7 +372,7 @@ const css = `
   .submit-form { max-width: 560px; margin: 0 auto; }
   .form-group { margin-bottom: 20px; }
   .form-group label { display: block; font-size: 14px; margin-bottom: 6px; font-weight: bold; }
-  .form-input { width: 100%; padding: 10px 12px; border: 2px solid var(--border); background: var(--card-bg); font-family: 'PixelatedElegance', monospace; font-size: 14px; color: var(--ink); outline: none; }
+  .form-input { width: 100%; padding: 10px 12px; border: 2px solid var(--border); background: var(--card-bg); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 16px; color: var(--ink); outline: none; }
   .form-input:focus { box-shadow: 3px 3px 0 var(--border); }
   textarea.form-input { min-height: 120px; resize: vertical; }
   .upload-zone { border: 2px dashed var(--border); padding: 32px; text-align: center; cursor: pointer; font-size: 14px; }
@@ -1072,8 +1072,8 @@ function MatchupDetailPage({ matchup, week, onBack }) {
     <div className="battle-side">
       <div className="battle-name">{side === 1 ? m1.name : m2.name}</div>
       <div className="submit-form">
-        <div className="form-group"><label>Bird Species:</label><input className="form-input" placeholder='e.g. "Pileated Woodpecker"' value={form.species} onChange={(e) => setForm({ ...form, species: e.target.value })} /></div>
-        <div className="form-group"><label>Encounter:</label><textarea className="form-input" placeholder="Tell us about the encounter..." value={form.desc} onChange={(e) => setForm({ ...form, desc: e.target.value })} /></div>
+        <div className="form-group"><label>Bird Species:</label><input className="form-input" placeholder='e.g. "Pileated Woodpecker"' value={form.species} autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false" onChange={(e) => { const v = e.target.value; setForm(f => ({ ...f, species: v })); }} /></div>
+        <div className="form-group"><label>Encounter:</label><textarea className="form-input" placeholder="Tell us about the encounter..." value={form.desc} autoComplete="off" autoCorrect="off" spellCheck="false" onChange={(e) => { const v = e.target.value; setForm(f => ({ ...f, desc: v })); }} /></div>
         <div className="form-group">
           <label>Photos / Video / Audio:</label>
           <input type="file" ref={fileRef} multiple accept="image/*,video/*,audio/*" style={{ display: "none" }} onChange={(e) => handleFiles(side, e.target.files)} />
@@ -1238,7 +1238,13 @@ export default function App() {
   const [tab, setTab] = useState("home");
   const [selectedMatchup, setSelectedMatchup] = useState(null);
   const [selectedWeek, setSelectedWeek] = useState(null);
-  const [activeWeek, setActiveWeek] = useState(3);
+  const [activeWeek, setActiveWeek] = useState(() => {
+    const active = SCHEDULE.filter(s => s.status === "active");
+    if (active.length > 0) return Math.max(...active.map(s => s.week));
+    const completed = SCHEDULE.filter(s => s.status === "completed");
+    if (completed.length > 0) return Math.max(...completed.map(s => s.week));
+    return 1;
+  });
 
   const handleMatchupSelect = (mu, week) => { setSelectedMatchup(mu); setSelectedWeek(week); setActiveWeek(week); setTab("matchup-detail"); };
   const handleBack = () => { refreshData(); setSelectedMatchup(null); setTab("home"); };
