@@ -1221,7 +1221,16 @@ export default function App() {
       .then(data => {
         if (data.members) MEMBERS = data.members;
         if (data.standings) STANDINGS = data.standings;
-        if (data.schedule) SCHEDULE = data.schedule;
+        if (data.schedule) {
+          SCHEDULE = data.schedule;
+          // Update activeWeek to highest active week from API
+          const active = SCHEDULE.filter(s => s.status === "active");
+          if (active.length > 0) setActiveWeek(Math.max(...active.map(s => s.week)));
+          else {
+            const completed = SCHEDULE.filter(s => s.status === "completed");
+            if (completed.length > 0) setActiveWeek(Math.max(...completed.map(s => s.week)));
+          }
+        }
         setDataLoaded(true);
         setRefreshKey(k => k + 1);
       })
