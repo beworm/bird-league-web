@@ -393,6 +393,35 @@ const css = `
   .view-decision-btn { display: block; width: 100%; padding: 14px; font-family: 'Alagard', serif; font-size: 18px; background: var(--ink); color: var(--bg); border: 3px solid var(--border); cursor: pointer; text-align: center; margin-top: 24px; }
   .view-decision-btn:hover { background: var(--bg); color: var(--ink); }
 
+  .appeal-section { margin-top: 32px; border: 2px solid var(--border); padding: 20px; }
+  .appeal-header { font-family: 'Alagard', serif; font-size: 20px; margin-bottom: 16px; text-align: center; }
+  .appeal-form { }
+  .appeal-prompt { font-size: 14px; margin-bottom: 12px; font-style: italic; }
+  .appeal-textarea { width: 100%; min-height: 100px; padding: 10px 12px; border: 2px solid var(--border); background: var(--card-bg); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 16px; color: var(--ink); outline: none; resize: vertical; }
+  .appeal-textarea:focus { box-shadow: 3px 3px 0 var(--border); }
+  .appeal-char-count { text-align: right; font-size: 11px; color: var(--ink-light); margin-top: 4px; }
+  .appeal-submit-btn { width: 100%; padding: 10px; font-family: 'Alagard', serif; font-size: 16px; background: var(--ink); color: var(--bg); border: 2px solid var(--border); cursor: pointer; margin-top: 8px; }
+  .appeal-submit-btn:hover { background: var(--bg); color: var(--ink); }
+  .appeal-submit-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .appeal-message { text-align: center; font-size: 13px; margin-top: 8px; color: var(--ink-light); }
+  .appeal-exchange { margin-bottom: 16px; }
+  .appeal-entry { margin-bottom: 12px; padding: 12px; border: 1px solid var(--border); }
+  .appeal-entry-label { font-family: 'Alagard', serif; font-size: 14px; margin-bottom: 6px; }
+  .appeal-entry-text { font-size: 14px; line-height: 1.5; }
+  .appeal-pending { text-align: center; font-style: italic; color: var(--ink-light); padding: 12px; }
+  .commissioner-ruling { text-align: center; }
+  .commissioner-badge { font-family: 'Alagard', serif; font-size: 14px; color: #8b0000; margin-bottom: 12px; }
+  .commissioner-results { display: flex; justify-content: center; gap: 24px; margin-bottom: 12px; }
+  .cr-result { font-family: 'PixelatedElegance', monospace; font-size: 14px; padding: 4px 12px; border: 2px solid var(--border); }
+  .cr-result.win { color: #2d6a4f; border-color: #2d6a4f; }
+  .cr-result.loss { color: #8b0000; border-color: #8b0000; }
+  .commissioner-reason { font-size: 13px; font-style: italic; color: var(--ink-light); }
+  .appeal-ruling-box { margin-bottom: 16px; padding: 16px; border: 2px solid var(--border); }
+  .appeal-verdict { font-family: 'Alagard', serif; font-size: 16px; text-align: center; margin-bottom: 12px; }
+  .appeal-verdict.upheld { color: #2d6a4f; }
+  .appeal-verdict.overturned { color: #8b0000; }
+  .appeal-ruling-text { font-size: 14px; line-height: 1.6; }
+
   /* ── Modal Overlay ─────────────────── */
   .modal-overlay {
     position: fixed; top: 0; left: 0; right: 0; bottom: 0;
@@ -512,6 +541,11 @@ const css = `
   .admin-btn-inline:disabled:hover { background: none; color: var(--ink-light); }
   .admin-btn-danger { color: #8b0000; border-color: #8b0000; }
   .admin-btn-danger:hover { background: #8b0000; color: #fff; }
+  .admin-appeals-section { margin-top: 12px; padding: 12px; border: 1px dashed var(--border); }
+  .admin-appeal-row { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #eee; }
+  .admin-appeal-row:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+  .admin-appeal-info { display: flex; justify-content: space-between; align-items: center; }
+  .admin-appeal-status { font-size: 11px; padding: 2px 8px; border: 1px solid var(--border); }
   .admin-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
   .admin-log { background: var(--card-bg); border: 2px solid var(--border); padding: 14px; margin-top: 16px; }
@@ -690,6 +724,106 @@ function AdminPanel({ onRefresh }) {
     }
   };
 
+  const toggleAppeals = async (weekNum, action) => {
+    log(`${action === "open" ? "Opening" : "Closing"} appeals for Week ${weekNum}...`);
+    try {
+      const res = await adminFetch(`/api/admin/appeals/${weekNum}/${action}`, { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        log(`Appeals ${action === "open" ? "opened" : "closed"} for Week ${weekNum}`);
+        loadWeekData();
+        if (onRefresh) onRefresh();
+      } else {
+        log(`Error: ${data.error || JSON.stringify(data)}`);
+      }
+    } catch (e) {
+      log(`Failed: ${e.message}`);
+    }
+  };
+
+  const appealRejudge = async (weekNum, m1Id, m2Id) => {
+    const m1Name = getMember(m1Id)?.name || m1Id;
+    const m2Name = getMember(m2Id)?.name || m2Id;
+    if (!confirm(`Send ${m1Name} vs ${m2Name} appeal to Claude for ruling?`)) return;
+    log(`Appeal rejudge: ${m1Name} vs ${m2Name}...`);
+    try {
+      const res = await adminFetch(`/api/admin/appeal-ruling/${weekNum}/${m1Id}/${m2Id}`, {
+        method: "POST",
+        body: JSON.stringify({ action: "appeal_rejudge" }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        log(`Appeal ruled: ${m1Name} vs ${m2Name}`);
+        loadWeekData();
+        if (onRefresh) onRefresh();
+      } else {
+        log(`Error: ${data.error || JSON.stringify(data)}`);
+      }
+    } catch (e) {
+      log(`Failed: ${e.message}`);
+    }
+  };
+
+  const commissionerRuling = async (weekNum, m1Id, m2Id) => {
+    const m1Name = getMember(m1Id)?.name || m1Id;
+    const m2Name = getMember(m2Id)?.name || m2Id;
+    const choice = prompt(
+      `Commissioner ruling for ${m1Name} vs ${m2Name}:\n` +
+      `Enter one of:\n` +
+      `  1w2l = ${m1Name} wins, ${m2Name} loses\n` +
+      `  1l2w = ${m2Name} wins, ${m1Name} loses\n` +
+      `  1w2w = Both win\n` +
+      `  1l2l = Both lose`
+    );
+    if (!choice) return;
+    const rulings = {
+      "1w2l": { m1Result: "win", m2Result: "loss" },
+      "1l2w": { m1Result: "loss", m2Result: "win" },
+      "1w2w": { m1Result: "win", m2Result: "win" },
+      "1l2l": { m1Result: "loss", m2Result: "loss" },
+    };
+    const r = rulings[choice.trim().toLowerCase()];
+    if (!r) { log(`Invalid choice: ${choice}`); return; }
+    const reason = prompt("Reason (optional):") || "Ruled by commissioner.";
+    log(`Commissioner ruling: ${m1Name} vs ${m2Name} → ${choice}`);
+    try {
+      const res = await adminFetch(`/api/admin/appeal-ruling/${weekNum}/${m1Id}/${m2Id}`, {
+        method: "POST",
+        body: JSON.stringify({ action: "commissioner_ruling", ...r, reason }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        log(`Commissioner ruled: ${m1Name} vs ${m2Name}`);
+        loadWeekData();
+        if (onRefresh) onRefresh();
+      } else {
+        log(`Error: ${data.error || JSON.stringify(data)}`);
+      }
+    } catch (e) {
+      log(`Failed: ${e.message}`);
+    }
+  };
+
+  const deleteAppeal = async (weekNum, m1Id, m2Id) => {
+    const m1Name = getMember(m1Id)?.name || m1Id;
+    const m2Name = getMember(m2Id)?.name || m2Id;
+    if (!confirm(`Delete appeal for ${m1Name} vs ${m2Name}? This will also clear any commissioner/appeal ruling.`)) return;
+    log(`Deleting appeal: ${m1Name} vs ${m2Name}...`);
+    try {
+      const res = await adminFetch(`/api/admin/appeal/${weekNum}/${m1Id}/${m2Id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (res.ok) {
+        log(`Appeal deleted for ${m1Name} vs ${m2Name}`);
+        loadWeekData();
+        if (onRefresh) onRefresh();
+      } else {
+        log(`Error: ${data.error || JSON.stringify(data)}`);
+      }
+    } catch (e) {
+      log(`Failed: ${e.message}`);
+    }
+  };
+
   if (!authenticated) {
     return (
       <div className="admin-login">
@@ -805,7 +939,44 @@ function AdminPanel({ onRefresh }) {
                   ✗ Clear Judgments
                 </button>
               )}
+              {judged > 0 && (
+                <button
+                  className="admin-btn"
+                  style={w.appealsStatus === "open" ? { color: "#8b0000", borderColor: "#8b0000" } : { color: "#2d6a4f", borderColor: "#2d6a4f" }}
+                  onClick={() => toggleAppeals(w.week, w.appealsStatus === "open" ? "close" : "open")}
+                >
+                  {w.appealsStatus === "open" ? "🔒 Close Appeals" : "📜 Open Appeals"}
+                </button>
+              )}
             </div>
+
+            {/* Appeal details for matchups with appeals */}
+            {w.matchups?.some(mu => mu.appeal) && (
+              <div className="admin-appeals-section">
+                <div style={{ fontSize: 13, fontFamily: "'Alagard', serif", marginBottom: 8 }}>Appeals</div>
+                {w.matchups.filter(mu => mu.appeal).map((mu, i) => {
+                  const ap = mu.appeal;
+                  const m1Name = getMember(mu.m1)?.name || mu.m1;
+                  const m2Name = getMember(mu.m2)?.name || mu.m2;
+                  const appealer = getMember(ap.appealBy)?.name || ap.appealBy;
+                  return (
+                    <div key={i} className="admin-appeal-row">
+                      <div className="admin-appeal-info">
+                        <span style={{ fontWeight: "bold" }}>{m1Name} vs {m2Name}</span>
+                        <span className="admin-appeal-status">{ap.status}</span>
+                      </div>
+                      <div style={{ fontSize: 12, color: "var(--ink-light)", margin: "4px 0" }}>Appeal by {appealer}: "{(ap.appealText || "").slice(0, 80)}..."</div>
+                      {ap.defenseText && <div style={{ fontSize: 12, color: "var(--ink-light)", margin: "4px 0" }}>Defense: "{ap.defenseText.slice(0, 80)}..."</div>}
+                      <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                        <button className="admin-btn-inline" title="Appeal Rejudge (Claude)" onClick={() => appealRejudge(w.week, mu.m1, mu.m2)}>⚖ Appeal Judge</button>
+                        <button className="admin-btn-inline" title="Commissioner ruling" onClick={() => commissionerRuling(w.week, mu.m1, mu.m2)}>👑 Commissioner</button>
+                        <button className="admin-btn-inline admin-btn-danger" title="Delete this appeal" onClick={() => deleteAppeal(w.week, mu.m1, mu.m2)}>✗ Delete Appeal</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         );
       })}
@@ -857,11 +1028,20 @@ function Nav({ setTab, tab }) {
 }
 
 function Hero() {
+  const activeWeek = SCHEDULE.find(s => s.status === "active");
+  const badgeText = activeWeek
+    ? `Week ${activeWeek.week} - Submissions Open`
+    : (() => {
+        const completed = SCHEDULE.filter(s => s.status === "completed");
+        if (completed.length === SCHEDULE.length) return "Season Complete";
+        const latest = completed.length > 0 ? Math.max(...completed.map(s => s.week)) : 0;
+        return `Week ${latest} - Judging Complete`;
+      })();
   return (
     <div className="hero">
       <div style={{ fontSize: "56px", fontFamily: "'OldEnglishGothicPixel', serif", marginBottom: "8px" }}>Bird League</div>
       <div className="hero-sub">Bird League is an exclusive, underground, highly illegal, and dangerous bird fighting association. DO NOT tell the cops, the Federal Bureau of Investigation, or your parents about Bird League.</div>
-      <div className="hero-badge">Week 3 - Submissions Open</div>
+      <div className="hero-badge">{badgeText}</div>
     </div>
   );
 }
@@ -998,6 +1178,207 @@ function DeliberationModal({ judgment, m1, m2, onClose }) {
       </div>
     </div>
   );
+}
+
+// ─── Appeal Section ───────────────────────────────────────
+
+const APPEAL_CHAR_LIMIT = 1000;
+
+function AppealSection({ matchup, week, m1, m2, judgment }) {
+  const appeal = matchup.appeal;
+  const weekData = SCHEDULE.find(s => s.week === week);
+  const appealsOpen = weekData?.appealsStatus === "open";
+
+  const loserSide = judgment.winner === "m1" ? "m2" : "m1";
+  const winnerSide = judgment.winner === "m1" ? "m1" : "m2";
+  const loserMember = loserSide === "m1" ? m1 : m2;
+  const winnerMember = winnerSide === "m1" ? m1 : m2;
+  const loserId = loserSide === "m1" ? matchup.m1 : matchup.m2;
+  const winnerId = winnerSide === "m1" ? matchup.m1 : matchup.m2;
+
+  const [appealText, setAppealText] = useState("");
+  const [defenseText, setDefenseText] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState(null);
+
+  // Commissioner ruling
+  const cr = judgment.commissionerRuling;
+  const appealRuling = judgment.appealRuling;
+
+  const submitAppeal = async () => {
+    if (!appealText.trim()) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch(API_URL + `/api/appeal/${week}/${matchup.m1}/${matchup.m2}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ memberId: loserId, appealText: appealText.trim() }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setMessage("Appeal submitted!");
+        setTimeout(() => window.location.reload(), 1000);
+      } else {
+        setMessage(data.error || "Failed to submit appeal");
+      }
+    } catch (e) {
+      setMessage("Error: " + e.message);
+    }
+    setSubmitting(false);
+  };
+
+  const submitDefense = async () => {
+    if (!defenseText.trim()) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch(API_URL + `/api/defense/${week}/${matchup.m1}/${matchup.m2}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ memberId: winnerId, defenseText: defenseText.trim() }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setMessage("Defense submitted!");
+        setTimeout(() => window.location.reload(), 1000);
+      } else {
+        setMessage(data.error || "Failed to submit defense");
+      }
+    } catch (e) {
+      setMessage("Error: " + e.message);
+    }
+    setSubmitting(false);
+  };
+
+  // Show commissioner ruling if present
+  if (cr) {
+    const m1Label = cr.m1Result === "win" ? "WIN" : "LOSS";
+    const m2Label = cr.m2Result === "win" ? "WIN" : "LOSS";
+    return (
+      <div className="appeal-section">
+        <div className="appeal-header">Commissioner Ruling</div>
+        <div className="commissioner-ruling">
+          <div className="commissioner-badge">Ruled by Commissioner</div>
+          <div className="commissioner-results">
+            <span className={`cr-result ${cr.m1Result}`}>{m1.name}: {m1Label}</span>
+            <span className={`cr-result ${cr.m2Result}`}>{m2.name}: {m2Label}</span>
+          </div>
+          {cr.reason && <div className="commissioner-reason">{cr.reason}</div>}
+        </div>
+      </div>
+    );
+  }
+
+  // Show appeal ruling if present
+  if (appealRuling) {
+    const upheld = appealRuling.newWinner === appealRuling.previousWinner;
+    return (
+      <div className="appeal-section">
+        <div className="appeal-header">Appeal Ruling</div>
+        <div className="appeal-ruling-box">
+          <div className={`appeal-verdict ${upheld ? "upheld" : "overturned"}`}>
+            {upheld ? "Original ruling UPHELD" : "Original ruling OVERTURNED"}
+          </div>
+          <div className="appeal-ruling-text">{appealRuling.ruling}</div>
+        </div>
+        {appeal?.appealText && (
+          <div className="appeal-exchange">
+            <div className="appeal-entry">
+              <div className="appeal-entry-label">{loserMember.name}'s Appeal:</div>
+              <div className="appeal-entry-text">{appeal.appealText}</div>
+            </div>
+            {appeal.defenseText && (
+              <div className="appeal-entry">
+                <div className="appeal-entry-label">{winnerMember.name}'s Defense:</div>
+                <div className="appeal-entry-text">{appeal.defenseText}</div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Appeals not open
+  if (!appealsOpen) return null;
+
+  // No winner (null) means special ruling, no appeals
+  if (!judgment.winner) return null;
+
+  // No appeal yet — show appeal form for loser
+  if (!appeal) {
+    return (
+      <div className="appeal-section">
+        <div className="appeal-header">Appeal</div>
+        <div className="appeal-form">
+          <div className="appeal-prompt">{loserMember.name}, do you wish to appeal this ruling?</div>
+          <textarea
+            className="appeal-textarea"
+            placeholder="State your case for why this ruling should be overturned..."
+            value={appealText}
+            maxLength={APPEAL_CHAR_LIMIT}
+            onChange={(e) => setAppealText(e.target.value)}
+          />
+          <div className="appeal-char-count">{appealText.length}/{APPEAL_CHAR_LIMIT}</div>
+          <button className="appeal-submit-btn" onClick={submitAppeal} disabled={submitting || !appealText.trim()}>
+            {submitting ? "Submitting..." : "File Appeal"}
+          </button>
+          {message && <div className="appeal-message">{message}</div>}
+        </div>
+      </div>
+    );
+  }
+
+  // Appeal filed, no defense yet — show defense form for winner
+  if (appeal && !appeal.defenseText) {
+    return (
+      <div className="appeal-section">
+        <div className="appeal-header">Appeal Filed</div>
+        <div className="appeal-exchange">
+          <div className="appeal-entry">
+            <div className="appeal-entry-label">{loserMember.name}'s Appeal:</div>
+            <div className="appeal-entry-text">{appeal.appealText}</div>
+          </div>
+        </div>
+        <div className="appeal-form">
+          <div className="appeal-prompt">{winnerMember.name}, the loser has appealed. You may submit a defense.</div>
+          <textarea
+            className="appeal-textarea"
+            placeholder="Defend your victory..."
+            value={defenseText}
+            maxLength={APPEAL_CHAR_LIMIT}
+            onChange={(e) => setDefenseText(e.target.value)}
+          />
+          <div className="appeal-char-count">{defenseText.length}/{APPEAL_CHAR_LIMIT}</div>
+          <button className="appeal-submit-btn" onClick={submitDefense} disabled={submitting || !defenseText.trim()}>
+            {submitting ? "Submitting..." : "Submit Defense"}
+          </button>
+          {message && <div className="appeal-message">{message}</div>}
+        </div>
+      </div>
+    );
+  }
+
+  // Both submitted, pending review
+  if (appeal && appeal.defenseText) {
+    return (
+      <div className="appeal-section">
+        <div className="appeal-header">Appeal Under Review</div>
+        <div className="appeal-exchange">
+          <div className="appeal-entry">
+            <div className="appeal-entry-label">{loserMember.name}'s Appeal:</div>
+            <div className="appeal-entry-text">{appeal.appealText}</div>
+          </div>
+          <div className="appeal-entry">
+            <div className="appeal-entry-label">{winnerMember.name}'s Defense:</div>
+            <div className="appeal-entry-text">{appeal.defenseText}</div>
+          </div>
+        </div>
+        <div className="appeal-pending">Awaiting the Commissioner's decision...</div>
+      </div>
+    );
+  }
+
+  return null;
 }
 
 // ─── Matchup Detail Page ──────────────────────────────────
@@ -1164,6 +1545,9 @@ function MatchupDetailPage({ matchup, week, onBack }) {
         </div>
         <button className="view-decision-btn" onClick={() => setShowModal(true)}>View Court Decision</button>
         {showModal && <DeliberationModal judgment={j} m1={m1} m2={m2} onClose={() => setShowModal(false)} />}
+
+        {/* Appeal Section */}
+        <AppealSection matchup={matchup} week={week} m1={m1} m2={m2} judgment={j} />
       </div>
     );
   }
