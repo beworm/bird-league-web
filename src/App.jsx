@@ -110,6 +110,8 @@ let STANDINGS = [
   }
 ];
 
+let PLAYOFF_SEEDING = [];
+
 let SCHEDULE = [
   { week: 1, status: "completed", matchups: [
     { m1: 2, m2: 1, judgment: {
@@ -422,6 +424,46 @@ const css = `
   .appeal-verdict.overturned { color: #8b0000; }
   .appeal-ruling-text { font-size: 14px; line-height: 1.6; }
 
+  /* Playoff tabs */
+  .week-btn.playoff { border-color: #b5851b; color: #b5851b; }
+  .week-btn.playoff.active { background: #b5851b; color: var(--bg); border-color: #b5851b; }
+  .week-btn.playoff.locked { opacity: 0.4; cursor: not-allowed; }
+
+  /* Bracket */
+  .bracket { display: flex; align-items: flex-start; justify-content: center; gap: 0; padding: 20px 0; margin-bottom: 24px; overflow-x: auto; }
+  .bracket-round { display: flex; flex-direction: column; align-items: center; min-width: 200px; }
+  .bracket-round-label { font-family: 'OldEnglishGothicPixel', serif; font-size: 18px; margin-bottom: 16px; color: #b5851b; }
+  .bracket-slot { border: 2px solid var(--border); background: var(--card-bg); margin-bottom: 16px; width: 190px; }
+  .bracket-slot.bye { border-style: dashed; }
+  .bracket-slot.champion { border-color: #b5851b; border-width: 3px; }
+  .bracket-slot-header { font-family: 'PixelatedElegance', monospace; font-size: 8px; color: var(--ink-light); padding: 4px 8px; border-bottom: 1px solid var(--border); }
+  .bracket-slot-header.bye-header { color: #8b0000; }
+  .bracket-slot-player { display: flex; align-items: center; padding: 8px 10px; gap: 8px; border-bottom: 1px solid #eee; }
+  .bracket-slot-player:last-child { border-bottom: none; }
+  .bracket-slot-player.winner { background: rgba(45, 106, 79, 0.08); }
+  .bracket-slot-player.loser { opacity: 0.4; }
+  .bracket-seed { font-family: 'PixelatedElegance', monospace; font-size: 9px; color: #b5851b; min-width: 22px; }
+  .bracket-player-name { font-size: 14px; flex: 1; }
+  .bracket-record { font-family: 'PixelatedElegance', monospace; font-size: 8px; color: var(--ink-light); }
+  .bracket-win { color: #2d6a4f; font-weight: bold; font-size: 12px; }
+  .bracket-bye-placeholder { padding: 8px 10px; opacity: 0.3; font-style: italic; color: var(--ink-light); font-size: 13px; }
+  .bracket-tbd { font-style: italic; color: var(--ink-light); }
+  .bracket-connectors { width: 40px; flex-shrink: 0; }
+
+  /* Bye card in matchup list */
+  .bye-card { display: flex; align-items: center; border: 2px dashed var(--border); background: var(--card-bg); padding: 0; margin-bottom: 12px; }
+  .bye-card .matchup-member { flex: 1; padding: 14px 16px; }
+  .bye-tag { font-family: 'PixelatedElegance', monospace; font-size: 10px; color: #8b0000; padding: 0 16px; }
+  .seed-tag { font-family: 'PixelatedElegance', monospace; font-size: 8px; color: #b5851b; margin-left: 8px; }
+  .playoff-placeholder { text-align: center; padding: 40px 20px; color: var(--ink-light); font-style: italic; border: 2px dashed var(--border); background: var(--card-bg); }
+
+  @media (max-width: 700px) {
+    .bracket { flex-direction: column; gap: 20px; align-items: center; }
+    .bracket-connectors { display: none; }
+    .bracket-round { min-width: unset; width: 100%; }
+    .bracket-slot { width: 100%; }
+  }
+
   /* ── Modal Overlay ─────────────────── */
   .modal-overlay {
     position: fixed; top: 0; left: 0; right: 0; bottom: 0;
@@ -603,6 +645,7 @@ function AdminPanel({ onRefresh }) {
         // Also update global state
         if (data.members) MEMBERS = data.members;
         if (data.standings) STANDINGS = data.standings;
+        if (data.playoffSeeding) PLAYOFF_SEEDING = data.playoffSeeding;
         if (data.schedule) SCHEDULE = data.schedule;
       }
     } catch (e) {
@@ -824,6 +867,66 @@ function AdminPanel({ onRefresh }) {
     }
   };
 
+  const seedPlayoffs = async () => {
+    const seedingData = [
+      { seed: 1, id: 9, name: "Grace", w: 0, l: 0 },
+      { seed: 2, id: 6, name: "Leo & Taylor", w: 0, l: 0 },
+      { seed: 3, id: 3, name: "Marshall", w: 0, l: 0 },
+      { seed: 4, id: 8, name: "Emily", w: 0, l: 0 },
+      { seed: 5, id: 10, name: "Ben", w: 0, l: 0 },
+      { seed: 6, id: 5, name: "Anna", w: 0, l: 0 },
+    ];
+    if (!confirm("Seed quarterfinals? #1 Grace, #2 Leo & Taylor, #3 Marshall, #4 Emily, #5 Ben, #6 Anna")) return;
+    log("Seeding playoffs...");
+    try {
+      const res = await adminFetch("/api/admin/playoff/seed", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ seeding: seedingData }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        log(`Playoffs seeded! ${data.seeding.map(s => `#${s.seed} ${s.name}`).join(", ")}`);
+        loadWeekData();
+        if (onRefresh) onRefresh();
+      } else {
+        log(`Error: ${data.error || JSON.stringify(data)}`);
+      }
+    } catch (e) { log(`Failed: ${e.message}`); }
+  };
+
+  const advanceSemifinals = async () => {
+    if (!confirm("Populate semifinals from QF results?")) return;
+    log("Advancing to semifinals...");
+    try {
+      const res = await adminFetch("/api/admin/playoff/advance-sf", { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        log("Semifinals set!");
+        loadWeekData();
+        if (onRefresh) onRefresh();
+      } else {
+        log(`Error: ${data.error || JSON.stringify(data)}`);
+      }
+    } catch (e) { log(`Failed: ${e.message}`); }
+  };
+
+  const advanceFinal = async () => {
+    if (!confirm("Populate final from SF results?")) return;
+    log("Advancing to final...");
+    try {
+      const res = await adminFetch("/api/admin/playoff/advance-final", { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        log("Final set!");
+        loadWeekData();
+        if (onRefresh) onRefresh();
+      } else {
+        log(`Error: ${data.error || JSON.stringify(data)}`);
+      }
+    } catch (e) { log(`Failed: ${e.message}`); }
+  };
+
   if (!authenticated) {
     return (
       <div className="admin-login">
@@ -980,6 +1083,29 @@ function AdminPanel({ onRefresh }) {
           </div>
         );
       })}
+
+      {/* Playoff Admin Controls */}
+      <div className="admin-week-card">
+        <div className="admin-week-header">
+          <span className="admin-week-label" style={{ color: "#b5851b" }}>Playoffs</span>
+        </div>
+        <div className="admin-actions" style={{ flexWrap: "wrap" }}>
+          <button className="admin-btn" style={{ color: "#b5851b", borderColor: "#b5851b" }} onClick={seedPlayoffs}>
+            {"\uD83C\uDF31"} Seed Quarterfinals
+          </button>
+          <button className="admin-btn" style={{ color: "#b5851b", borderColor: "#b5851b" }} onClick={advanceSemifinals}>
+            {"\u2192"} Advance to Semifinals
+          </button>
+          <button className="admin-btn" style={{ color: "#b5851b", borderColor: "#b5851b" }} onClick={advanceFinal}>
+            {"\u2192"} Advance to Final
+          </button>
+        </div>
+        {PLAYOFF_SEEDING.length > 0 && (
+          <div style={{ fontSize: 12, color: "var(--ink-light)", padding: "8px 0" }}>
+            Seeding: {PLAYOFF_SEEDING.map(s => `#${s.seed} ${s.name}`).join(", ")}
+          </div>
+        )}
+      </div>
 
       <div className="admin-log">
         <div className="admin-log-title">Activity Log</div>
@@ -1567,29 +1693,243 @@ function MatchupDetailPage({ matchup, week, onBack }) {
   );
 }
 
+// ─── Playoff Bracket ──────────────────────────────────────
+
+function PlayoffBracket() {
+  const qf = SCHEDULE.find(s => s.week === 7);
+  const sf = SCHEDULE.find(s => s.week === 8);
+  const fin = SCHEDULE.find(s => s.week === 9);
+  const seeding = PLAYOFF_SEEDING;
+
+  if (!seeding || seeding.length === 0) {
+    return <div className="playoff-placeholder">Playoff seeding will be determined after Week 6 is complete.</div>;
+  }
+
+  const getSeed = (id) => seeding.find(s => s.id === id);
+  const getName = (id) => getMember(id)?.name || "?";
+  const getRecord = (id) => { const s = getSeed(id); return s ? `${s.w}-${s.l}` : ""; };
+
+  const getResults = (week) => {
+    const results = {};
+    const weekData = SCHEDULE.find(s => s.week === week);
+    if (weekData?.matchups) {
+      weekData.matchups.forEach(mu => {
+        if (mu.judgment) {
+          results[mu.judgment.winner === "m1" ? mu.m1 : mu.m2] = "won";
+          results[mu.judgment.winner === "m1" ? mu.m2 : mu.m1] = "lost";
+        }
+      });
+    }
+    return results;
+  };
+
+  const qfResults = getResults(7);
+  const sfResults = getResults(8);
+  const finResults = getResults(9);
+
+  const seed1 = seeding.find(s => s.seed === 1);
+  const seed2 = seeding.find(s => s.seed === 2);
+
+  const renderPlayer = (id, results, showRecord) => {
+    if (!id) return <div className="bracket-slot-player"><span className="bracket-player-name bracket-tbd">TBD</span></div>;
+    const seed = getSeed(id);
+    const won = results[id] === "won";
+    const lost = results[id] === "lost";
+    const cls = won ? "bracket-slot-player winner" : lost ? "bracket-slot-player loser" : "bracket-slot-player";
+    return (
+      <div className={cls}>
+        {seed && <span className="bracket-seed">#{seed.seed}</span>}
+        <span className="bracket-player-name">{getName(id)}</span>
+        {showRecord && <span className="bracket-record">{getRecord(id)}</span>}
+        {won && <span className="bracket-win">{"\u2713"}</span>}
+      </div>
+    );
+  };
+
+  const sf1m1 = sf?.matchups?.[0]?.m1 || seed1?.id;
+  const sf1m2 = sf?.matchups?.[0]?.m2 || null;
+  const sf2m1 = sf?.matchups?.[1]?.m1 || seed2?.id;
+  const sf2m2 = sf?.matchups?.[1]?.m2 || null;
+  const fin1 = fin?.matchups?.[0]?.m1 || null;
+  const fin2 = fin?.matchups?.[0]?.m2 || null;
+  const championId = Object.keys(finResults).find(id => finResults[id] === "won");
+
+  return (
+    <div className="bracket">
+      {/* Quarterfinals */}
+      <div className="bracket-round">
+        <div className="bracket-round-label">Quarterfinals</div>
+        <div className="bracket-slot bye">
+          <div className="bracket-slot-header bye-header">BYE</div>
+          <div className="bracket-slot-player winner">
+            <span className="bracket-seed">#1</span>
+            <span className="bracket-player-name">{getName(seed1?.id)}</span>
+            <span className="bracket-record">{getRecord(seed1?.id)}</span>
+            <span className="bracket-win">{"\u2192"}</span>
+          </div>
+          <div className="bracket-bye-placeholder">{"\u2014"} bye {"\u2014"}</div>
+        </div>
+        <div className="bracket-slot bye">
+          <div className="bracket-slot-header bye-header">BYE</div>
+          <div className="bracket-slot-player winner">
+            <span className="bracket-seed">#2</span>
+            <span className="bracket-player-name">{getName(seed2?.id)}</span>
+            <span className="bracket-record">{getRecord(seed2?.id)}</span>
+            <span className="bracket-win">{"\u2192"}</span>
+          </div>
+          <div className="bracket-bye-placeholder">{"\u2014"} bye {"\u2014"}</div>
+        </div>
+        {qf?.matchups?.map((mu, i) => (
+          <div key={i} className="bracket-slot">
+            <div className="bracket-slot-header">QF {i + 1}</div>
+            {renderPlayer(mu.m1, qfResults, true)}
+            {renderPlayer(mu.m2, qfResults, true)}
+          </div>
+        ))}
+      </div>
+
+      {/* Connector QF to SF */}
+      <div className="bracket-connectors">
+        <svg width="40" height="420" viewBox="0 0 40 420">
+          <path d="M 0 55 H 20 V 110 H 40" stroke="#b5a98a" strokeWidth="2" fill="none"/>
+          <path d="M 0 155 H 20 V 110 H 40" stroke="#b5a98a" strokeWidth="2" fill="none"/>
+          <path d="M 0 265 H 20 V 320 H 40" stroke="#b5a98a" strokeWidth="2" fill="none"/>
+          <path d="M 0 370 H 20 V 320 H 40" stroke="#b5a98a" strokeWidth="2" fill="none"/>
+        </svg>
+      </div>
+
+      {/* Semifinals */}
+      <div className="bracket-round">
+        <div className="bracket-round-label">Semifinals</div>
+        <div className="bracket-slot" style={{ marginBottom: 110 }}>
+          <div className="bracket-slot-header">{sf1m2 ? "SF 1" : "SF 1 \u2014 #1 vs lowest remaining"}</div>
+          {renderPlayer(sf1m1, sfResults, true)}
+          {sf1m2 ? renderPlayer(sf1m2, sfResults, true) : <div className="bracket-slot-player"><span className="bracket-player-name bracket-tbd">QF Winner</span></div>}
+        </div>
+        <div className="bracket-slot">
+          <div className="bracket-slot-header">{sf2m2 ? "SF 2" : "SF 2 \u2014 #2 vs other QF winner"}</div>
+          {renderPlayer(sf2m1, sfResults, true)}
+          {sf2m2 ? renderPlayer(sf2m2, sfResults, true) : <div className="bracket-slot-player"><span className="bracket-player-name bracket-tbd">QF Winner</span></div>}
+        </div>
+      </div>
+
+      {/* Connector SF to Final */}
+      <div className="bracket-connectors">
+        <svg width="40" height="420" viewBox="0 0 40 420">
+          <path d="M 0 110 H 20 V 215 H 40" stroke="#b5a98a" strokeWidth="2" fill="none"/>
+          <path d="M 0 320 H 20 V 215 H 40" stroke="#b5a98a" strokeWidth="2" fill="none"/>
+        </svg>
+      </div>
+
+      {/* Final */}
+      <div className="bracket-round">
+        <div className="bracket-round-label">Final</div>
+        <div className={`bracket-slot${championId ? " champion" : ""}`} style={{ marginTop: 95 }}>
+          <div className="bracket-slot-header">CHAMPIONSHIP</div>
+          {fin1 ? renderPlayer(fin1, finResults, false) : <div className="bracket-slot-player"><span className="bracket-player-name bracket-tbd">SF 1 Winner</span></div>}
+          {fin2 ? renderPlayer(fin2, finResults, false) : <div className="bracket-slot-player"><span className="bracket-player-name bracket-tbd">SF 2 Winner</span></div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function HomePage({ onMatchupSelect, activeWeek, setActiveWeek }) {
   const w = SCHEDULE.find((s) => s.week === activeWeek);
+  const isPlayoff = w?.playoff;
+  const playoffLabels = { quarterfinals: "Quarters", semifinals: "Semis", finals: "Final" };
+  const regularWeeks = SCHEDULE.filter(s => !s.playoff);
+  const playoffWeeks = SCHEDULE.filter(s => s.playoff);
+  const week6 = SCHEDULE.find(s => s.week === 6);
+  const week6Done = week6?.status === "completed";
+
   return (
     <>
       <Hero />
       <div className="section">
         <h2 className="section-title">Bird Court</h2>
         <div className="week-selector">
-          {SCHEDULE.map((s) => (
+          {regularWeeks.map((s) => (
             <button key={s.week} className={`week-btn ${activeWeek === s.week ? "active" : ""}`} onClick={() => setActiveWeek(s.week)}>
               Week {s.week}{s.status === "completed" ? " \u2713" : s.status === "active" ? " \u25B6" : ""}
             </button>
           ))}
+          {playoffWeeks.map((s) => {
+            const label = playoffLabels[s.playoff] || s.playoff;
+            const locked = !week6Done && s.status === "upcoming";
+            return (
+              <button
+                key={s.week}
+                className={`week-btn playoff ${activeWeek === s.week ? "active" : ""} ${locked ? "locked" : ""}`}
+                onClick={() => { if (!locked) setActiveWeek(s.week); }}
+              >
+                {label}{s.status === "completed" ? " \u2713" : s.status === "active" ? " \u25B6" : ""}
+              </button>
+            );
+          })}
         </div>
-        {w?.matchups.length > 0 ? w.matchups.map((mu, i) => (
-          <MatchupCard key={i} mu={mu} weekStatus={w.status} onClick={() => onMatchupSelect(mu, w.week)} clickable />
-        )) : (
-          <div style={{ textAlign: "center", padding: "32px 0", color: "var(--ink-light)", fontSize: 14 }}>
-            Matchups not yet announced
-          </div>
+
+        {isPlayoff ? (
+          <>
+            <PlayoffBracket />
+            {PLAYOFF_SEEDING.length > 0 && (
+              <>
+                <div style={{ borderTop: "3px solid var(--border)", margin: "16px 0" }} />
+                <h2 className="section-title" style={{ marginTop: 16 }}>
+                  {playoffLabels[w.playoff] || w.playoff}
+                </h2>
+
+                {/* Bye cards for QF */}
+                {w.playoff === "quarterfinals" && w.byes?.map((bye, i) => (
+                  <div key={i} className="bye-card">
+                    <div className="matchup-member">
+                      <div className="member-name">{getMember(bye.id)?.name}<span className="seed-tag">#{bye.seed}</span></div>
+                    </div>
+                    <div className="bye-tag">BYE</div>
+                  </div>
+                ))}
+
+                {/* Matchup cards */}
+                {w.matchups.length > 0 ? w.matchups.map((mu, i) => {
+                  const m1Seed = PLAYOFF_SEEDING.find(s => s.id === mu.m1);
+                  const m2Seed = PLAYOFF_SEEDING.find(s => s.id === mu.m2);
+                  return (
+                    <div key={i} className={`matchup-card ${(w.status !== "upcoming" || mu.judgment) ? "clickable" : ""}`}
+                      onClick={() => { if (w.status !== "upcoming" || mu.judgment) onMatchupSelect(mu, w.week); }}>
+                      <div className="matchup-member">
+                        <div className="member-name">{getMember(mu.m1)?.name}{m1Seed && <span className="seed-tag">#{m1Seed.seed}</span>}</div>
+                        {mu.judgment && <div className={`member-score ${mu.judgment.winner === "m1" ? "win" : ""}`}>{mu.judgment.winner === "m1" ? "\u2713 Winner" : ""}</div>}
+                        {w.status === "active" && !mu.judgment && <div className="sub-status">{mu.sub1 ? "[Submitted]" : "[Pending]"}</div>}
+                      </div>
+                      <div className="matchup-vs">VS</div>
+                      <div className="matchup-member right">
+                        <div className="member-name">{getMember(mu.m2)?.name}{m2Seed && <span className="seed-tag">#{m2Seed.seed}</span>}</div>
+                        {mu.judgment && <div className={`member-score ${mu.judgment.winner === "m2" ? "win" : ""}`}>{mu.judgment.winner === "m2" ? "\u2713 Winner" : ""}</div>}
+                        {w.status === "active" && !mu.judgment && <div className="sub-status">{mu.sub2 ? "[Submitted]" : "[Pending]"}</div>}
+                      </div>
+                    </div>
+                  );
+                }) : (
+                  <div style={{ textAlign: "center", padding: "32px 0", color: "var(--ink-light)", fontSize: 14 }}>
+                    Matchups will be set after the previous round is complete.
+                  </div>
+                )}
+              </>
+            )}
+          </>
+        ) : (
+          <>
+            {w?.matchups.length > 0 ? w.matchups.map((mu, i) => (
+              <MatchupCard key={i} mu={mu} weekStatus={w.status} onClick={() => onMatchupSelect(mu, w.week)} clickable />
+            )) : (
+              <div style={{ textAlign: "center", padding: "32px 0", color: "var(--ink-light)", fontSize: 14 }}>
+                Matchups not yet announced
+              </div>
+            )}
+          </>
         )}
       </div>
-      <StandingsView />
+      {!isPlayoff && <StandingsView />}
     </>
   );
 }
@@ -1605,6 +1945,7 @@ export default function App() {
       .then(data => {
         if (data.members) MEMBERS = data.members;
         if (data.standings) STANDINGS = data.standings;
+        if (data.playoffSeeding) PLAYOFF_SEEDING = data.playoffSeeding;
         if (data.schedule) {
           SCHEDULE = data.schedule;
           // Update activeWeek to highest active week from API
