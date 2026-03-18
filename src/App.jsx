@@ -1154,15 +1154,13 @@ function Nav({ setTab, tab }) {
 }
 
 function Hero() {
+  const playoffLabels = { quarterfinals: "Quarterfinals", semifinals: "Semifinals", finals: "The Final" };
   const activeWeek = SCHEDULE.find(s => s.status === "active");
   const badgeText = activeWeek
-    ? `Week ${activeWeek.week} - Submissions Open`
-    : (() => {
-        const completed = SCHEDULE.filter(s => s.status === "completed");
-        if (completed.length === SCHEDULE.length) return "Season Complete";
-        const latest = completed.length > 0 ? Math.max(...completed.map(s => s.week)) : 0;
-        return `Week ${latest} - Judging Complete`;
-      })();
+    ? (activeWeek.playoff
+        ? `${playoffLabels[activeWeek.playoff] || activeWeek.playoff} - Submissions Open`
+        : `Week ${activeWeek.week} - Submissions Open`)
+    : "Playoffs";
   return (
     <div className="hero">
       <div style={{ fontSize: "56px", fontFamily: "'OldEnglishGothicPixel', serif", marginBottom: "8px" }}>Bird League</div>
@@ -1840,8 +1838,6 @@ function HomePage({ onMatchupSelect, activeWeek, setActiveWeek }) {
   const playoffLabels = { quarterfinals: "Quarters", semifinals: "Semis", finals: "Final" };
   const regularWeeks = SCHEDULE.filter(s => !s.playoff);
   const playoffWeeks = SCHEDULE.filter(s => s.playoff);
-  const week6 = SCHEDULE.find(s => s.week === 6);
-  const week6Done = week6?.status === "completed";
 
   return (
     <>
@@ -1850,13 +1846,13 @@ function HomePage({ onMatchupSelect, activeWeek, setActiveWeek }) {
         <h2 className="section-title">Bird Court</h2>
         <div className="week-selector">
           {regularWeeks.map((s) => (
-            <button key={s.week} className={`week-btn ${activeWeek === s.week ? "active" : ""}`} onClick={() => setActiveWeek(s.week)}>
-              Week {s.week}{s.status === "completed" ? " \u2713" : s.status === "active" ? " \u25B6" : ""}
+            <button key={s.week} className="week-btn locked" style={{ opacity: 0.4, cursor: "not-allowed" }}>
+              Week {s.week} {"\u2713"}
             </button>
           ))}
           {playoffWeeks.map((s) => {
             const label = playoffLabels[s.playoff] || s.playoff;
-            const locked = !week6Done && s.status === "upcoming";
+            const locked = s.status === "upcoming" && s.matchups?.length === 0 && !s.byes;
             return (
               <button
                 key={s.week}
@@ -1918,18 +1914,11 @@ function HomePage({ onMatchupSelect, activeWeek, setActiveWeek }) {
             )}
           </>
         ) : (
-          <>
-            {w?.matchups.length > 0 ? w.matchups.map((mu, i) => (
-              <MatchupCard key={i} mu={mu} weekStatus={w.status} onClick={() => onMatchupSelect(mu, w.week)} clickable />
-            )) : (
-              <div style={{ textAlign: "center", padding: "32px 0", color: "var(--ink-light)", fontSize: 14 }}>
-                Matchups not yet announced
-              </div>
-            )}
-          </>
+          <div style={{ textAlign: "center", padding: "32px 20px", color: "var(--ink-light)", fontStyle: "italic" }}>
+            Regular season complete. Select a playoff round above.
+          </div>
         )}
       </div>
-      {!isPlayoff && <StandingsView />}
     </>
   );
 }
@@ -1951,10 +1940,7 @@ export default function App() {
           // Update activeWeek to highest active week from API
           const active = SCHEDULE.filter(s => s.status === "active");
           if (active.length > 0) setActiveWeek(Math.max(...active.map(s => s.week)));
-          else {
-            const completed = SCHEDULE.filter(s => s.status === "completed");
-            if (completed.length > 0) setActiveWeek(Math.max(...completed.map(s => s.week)));
-          }
+          else setActiveWeek(7); // Default to quarters
         }
         setDataLoaded(true);
         setRefreshKey(k => k + 1);
@@ -1973,11 +1959,11 @@ export default function App() {
   const [selectedMatchup, setSelectedMatchup] = useState(null);
   const [selectedWeek, setSelectedWeek] = useState(null);
   const [activeWeek, setActiveWeek] = useState(() => {
+    // Default to quarterfinals (playoffs)
     const active = SCHEDULE.filter(s => s.status === "active");
     if (active.length > 0) return Math.max(...active.map(s => s.week));
-    const completed = SCHEDULE.filter(s => s.status === "completed");
-    if (completed.length > 0) return Math.max(...completed.map(s => s.week));
-    return 1;
+    // If nothing active, default to quarters
+    return 7;
   });
 
   const handleMatchupSelect = (mu, week) => { setSelectedMatchup(mu); setSelectedWeek(week); setActiveWeek(week); setTab("matchup-detail"); };
