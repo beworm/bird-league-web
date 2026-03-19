@@ -1846,8 +1846,8 @@ function HomePage({ onMatchupSelect, activeWeek, setActiveWeek }) {
         <h2 className="section-title">Bird Court</h2>
         <div className="week-selector">
           {regularWeeks.map((s) => (
-            <button key={s.week} className="week-btn locked" style={{ opacity: 0.4, cursor: "not-allowed" }}>
-              Week {s.week} {"\u2713"}
+            <button key={s.week} className={`week-btn ${activeWeek === s.week ? "active" : ""}`} onClick={() => setActiveWeek(s.week)}>
+              Week {s.week}{s.status === "completed" ? " \u2713" : s.status === "active" ? " \u25B6" : ""}
             </button>
           ))}
           {playoffWeeks.map((s) => {
@@ -1914,11 +1914,18 @@ function HomePage({ onMatchupSelect, activeWeek, setActiveWeek }) {
             )}
           </>
         ) : (
-          <div style={{ textAlign: "center", padding: "32px 20px", color: "var(--ink-light)", fontStyle: "italic" }}>
-            Regular season complete. Select a playoff round above.
-          </div>
+          <>
+            {w?.matchups.length > 0 ? w.matchups.map((mu, i) => (
+              <MatchupCard key={i} mu={mu} weekStatus={w.status} onClick={() => onMatchupSelect(mu, w.week)} clickable />
+            )) : (
+              <div style={{ textAlign: "center", padding: "32px 0", color: "var(--ink-light)", fontSize: 14 }}>
+                Matchups not yet announced
+              </div>
+            )}
+          </>
         )}
       </div>
+      {!isPlayoff && <StandingsView />}
     </>
   );
 }
@@ -1928,7 +1935,7 @@ export default function App() {
   const [apiError, setApiError] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  const refreshData = () => {
+  const refreshData = (resetWeek = false) => {
     return fetch(API_URL + "/api/data")
       .then(r => { if (!r.ok) throw new Error("API error"); return r.json(); })
       .then(data => {
@@ -1937,10 +1944,14 @@ export default function App() {
         if (data.playoffSeeding) PLAYOFF_SEEDING = data.playoffSeeding;
         if (data.schedule) {
           SCHEDULE = data.schedule;
-          // Update activeWeek to highest active week from API
-          const active = SCHEDULE.filter(s => s.status === "active");
-          if (active.length > 0) setActiveWeek(Math.max(...active.map(s => s.week)));
-          else setActiveWeek(7); // Default to quarters
+          if (resetWeek) {
+            const active = SCHEDULE.filter(s => s.status === "active");
+            if (active.length > 0) setActiveWeek(Math.max(...active.map(s => s.week)));
+            else {
+              const completed = SCHEDULE.filter(s => s.status === "completed");
+              if (completed.length > 0) setActiveWeek(Math.max(...completed.map(s => s.week)));
+            }
+          }
         }
         setDataLoaded(true);
         setRefreshKey(k => k + 1);
@@ -1952,18 +1963,18 @@ export default function App() {
       });
   };
 
-  useEffect(() => { refreshData(); }, []);
+  useEffect(() => { refreshData(true); }, []);
 
 
   const [tab, setTab] = useState("home");
   const [selectedMatchup, setSelectedMatchup] = useState(null);
   const [selectedWeek, setSelectedWeek] = useState(null);
   const [activeWeek, setActiveWeek] = useState(() => {
-    // Default to quarterfinals (playoffs)
     const active = SCHEDULE.filter(s => s.status === "active");
     if (active.length > 0) return Math.max(...active.map(s => s.week));
-    // If nothing active, default to quarters
-    return 7;
+    const completed = SCHEDULE.filter(s => s.status === "completed");
+    if (completed.length > 0) return Math.max(...completed.map(s => s.week));
+    return 1;
   });
 
   const handleMatchupSelect = (mu, week) => { setSelectedMatchup(mu); setSelectedWeek(week); setActiveWeek(week); setTab("matchup-detail"); };
